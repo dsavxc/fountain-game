@@ -11,8 +11,9 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background-color: #050a14; /* より深い夜空の色に */
+      background-color: #050a14;
       touch-action: manipulation;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
     }
     canvas {
       display: block;
@@ -35,36 +36,37 @@
   resizeCanvas();
 
   let particles = [];
+  let waterLevel = 0; // 溜まった水の量（0 〜 100）
+  const maxWaterLevel = 100;
+  let totalScore = 0;
+
+  // スコアポップアップ演出用の変数
+  let scorePopups = [];
 
   class Particle {
-    constructor(x, y, isPowerUp) {
+    constructor(x, y, isPowerUp, isMega = false) {
       this.x = x;
       this.y = y;
       
-      // --- パワーアップポイント1：噴出の物理挙動をリアルに ---
-      // 角度を少し狭めて上に飛び散るように
-      const angle = (Math.PI * 1.3) + Math.random() * (Math.PI * 0.4); 
-      // 勢いをランダムにして、タップ時はさらに大噴射
-      const baseSpeed = isPowerUp ? 15 : 8;
+      const angle = isMega 
+        ? (Math.PI * 1.0) + Math.random() * (Math.PI * 1.0) // Mega時は広範囲
+        : (Math.PI * 1.3) + Math.random() * (Math.PI * 0.4); 
+      
+      const baseSpeed = isMega ? 25 : (isPowerUp ? 16 : 8);
       const speed = Math.random() * baseSpeed + (isPowerUp ? 5 : 2);
       
       this.vx = Math.cos(angle) * speed;
       this.vy = Math.sin(angle) * speed;
       
-      // --- パワーアップポイント2：水滴の見た目を豪華に ---
-      // 水滴の大きさをバラつかせる
-      this.radius = Math.random() * 3 + 1;
-      // 水色〜白のグラデーション（HSLで表現）
-      const hue = 190 + Math.random() * 20; // 190-210 (水色)
-      const saturation = 90 + Math.random() * 10;
-      const lightness = 60 + Math.random() * 30; // 60-90 (白っぽく)
-      this.color = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+      this.radius = Math.random() * (isMega ? 6 : 3) + 1;
+      const hue = 185 + Math.random() * 30;
+      const lightness = 60 + Math.random() * 30;
+      this.color = `hsl(${hue}, 100%, ${lightness}%)`;
       
-      // --- パワーアップポイント3：滞空時間を長く ---
-      this.life = 150 + Math.random() * 50; // 寿命を長く
+      this.life = 150 + Math.random() * 50;
       this.opacity = 1;
-      this.gravity = 0.15; // 重力を少し弱くして、ふんわり飛ばす
-      this.friction = 0.99; // 空気抵抗を少し追加
+      this.gravity = 0.18;
+      this.friction = 0.99;
     }
 
     update() {
@@ -74,7 +76,6 @@
       this.y += this.vy;
       this.life -= 1;
       
-      // 徐々に透明にする
       if (this.life < 50) {
         this.opacity = this.life / 50;
       }
@@ -84,87 +85,105 @@
       if (this.opacity <= 0) return;
       ctx.beginPath();
       ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-      
-      // --- パワーアップポイント4：光る演出（グロー効果） ---
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = this.color;
-      
       ctx.fillStyle = this.color;
       ctx.globalAlpha = this.opacity;
       ctx.fill();
-      
-      // 描画後はエフェクトをリセット
       ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
     }
   }
 
-  // --- パワーアップポイント5：一度に出る水滴の数を大幅アップ ---
-  function spawnFountain(x, y, isPowerUp = false) {
-    const count = isPowerUp ? 100 : 30; // 通常30個、タップ時は100個！
+  // 噴水を発生させ、水を溜める
+  function spawnFountain(x, y, isPowerUp = false, isMega = false) {
+    const count = isMega ? 300 : (isPowerUp ? 80 : 25);
     for (let i = 0; i < count; i++) {
-      particles.push(new Particle(x, y, isPowerUp));
+      particles.push(new Particle(x, y, isPowerUp, isMega));
+    }
+
+    // 水を溜める（メガ時は増えない）
+    if (!isMega) {
+      waterLevel += isPowerUp ? 3.5 : 0.8;
+      if (waterLevel >= maxWaterLevel) {
+        triggerReset();
+      }
     }
   }
 
-  // 自動で少し噴水を出し続ける（ベースの噴水）
+  // リセット（大噴射 & スコア獲得）
+  function triggerReset() {
+    waterLevel = 0; // 水をリセット
+    
+    // 超大噴射
+    spawnFountain(canvas.width / 2, canvas.height * 0.85, false, true);
+
+    // ランダムスコア算出（基本スコア + ランダム加算）
+    const randomBonus = Math.floor(Math.random() * 500) + 500;
+    const gainedScore = 1000 + randomBonus;
+    totalScore += gainedScore;
+
+    // スコア表示アニメーションを追加
+    scorePopups.push({
+      text: `MEGA GUSH! +${gainedScore.toLocaleString()} PTS`,
+      x: canvas.width / 2,
+      y: canvas.height * 0.4,
+      life: 90,
+      opacity: 1.0,
+      scale: 1.5
+    });
+  }
+
+  // 自動噴水
   setInterval(() => {
     spawnFountain(canvas.width / 2, canvas.height * 0.85, false);
-  }, 100);
+  }, 120);
 
-  // タップ/クリックイベント
+  // タップ処理
   function handleInput(e) {
-    // 画面中央下から大噴射
     const startX = canvas.width / 2;
     const startY = canvas.height * 0.85;
     
-    spawnFountain(startX, startY, true); // trueで大噴射モード
+    spawnFountain(startX, startY, true);
+    
+    // タップ時にも少しだけスコア追加
+    totalScore += 10;
   }
 
   window.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // スマホのズームなどを防止
+    e.preventDefault();
     handleInput(e);
   }, { passive: false });
   window.addEventListener('mousedown', handleInput);
 
   function animate() {
-    // 画面クリア（微かに残像を残す処理を調整）
-    ctx.fillStyle = 'rgba(5, 10, 20, 0.2)'; // 残像を長めに
+    // 画面クリア（残像効果）
+    ctx.fillStyle = 'rgba(5, 10, 20, 0.25)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    // --- 溜まった水の描画（画面下に水面ができる） ---
+    const waterHeight = (waterLevel / maxWaterLevel) * (canvas.height * 0.25);
+    if (waterHeight > 0) {
+      const gradient = ctx.createLinearGradient(0, canvas.height - waterHeight, 0, canvas.height);
+      gradient.addColorStop(0, 'rgba(56, 189, 248, 0.4)');
+      gradient.addColorStop(1, 'rgba(14, 116, 144, 0.8)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, canvas.height - waterHeight, canvas.width, waterHeight);
+    }
+
     // 噴水口の描画
-    const gradient = ctx.createRadialGradient(
-      canvas.width / 2, canvas.height * 0.85, 0,
-      canvas.width / 2, canvas.height * 0.85, 20
-    );
-    gradient.addColorStop(0, '#fff');
-    gradient.addColorStop(0.5, '#38bdf8');
-    gradient.addColorStop(1, 'rgba(56, 189, 248, 0)');
     ctx.beginPath();
-    ctx.arc(canvas.width / 2, canvas.height * 0.85, 20, 0, Math.PI * 2);
-    ctx.fillStyle = gradient;
+    ctx.arc(canvas.width / 2, canvas.height * 0.85, 18, 0, Math.PI * 2);
+    ctx.fillStyle = '#38bdf8';
     ctx.fill();
 
     // パーティクルの更新と描画
     for (let i = particles.length - 1; i >= 0; i--) {
       particles[i].update();
       particles[i].draw();
-      
-      // 画面外または寿命が尽きたら削除
       if (particles[i].life <= 0 || particles[i].y > canvas.height + 50) {
         particles.splice(i, 1);
       }
     }
 
-    // パーティクル数の表示（デバッグ用、必要に応じてコメントアウト）
-    // ctx.fillStyle = '#fff';
-    // ctx.fillText(`Particles: ${particles.length}`, 10, 20);
-
-    requestAnimationFrame(animate);
-  }
-
-  animate();
-</script>
-</body>
-</html>
-
+    // --- UI（スコア＆メーター）の描画 ---
+    // 1. スコア表示
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px sans-serif
