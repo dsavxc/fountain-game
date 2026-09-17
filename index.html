@@ -18,10 +18,8 @@
     }
     canvas { display: block; }
 
-    /* UI画面 */
     .screen {
-      position: absolute;
-      top: 0; left: 0;
+      position: absolute; top: 0; left: 0;
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
       justify-content: center; align-items: center;
@@ -93,22 +91,27 @@
       border: 2px solid #cbd5e1; border-radius: 10px;
       width: 70px; height: 90px; font-size: 55px; font-weight: 900;
       display: flex; align-items: center; justify-content: center;
-      color: #ff4757; text-shadow: 0 0 10px #ff4757;
+      color: #38bdf8; text-shadow: 0 0 10px #0284c7;
+    }
+    .reel.seven { color: #ff4757; text-shadow: 0 0 15px #ff4757; }
+
+    .status-text {
+      font-size: 24px; font-weight: 900; height: 36px;
+      color: #facc15; text-shadow: 0 0 10px #f59e0b;
     }
     .reach-text {
       font-size: 32px; font-weight: 900; color: #ef4444;
-      text-shadow: 0 0 15px #ef4444; height: 40px;
-      animation: blink 0.2s infinite alternate;
+      text-shadow: 0 0 15px #ef4444;
+      animation: blink 0.15s infinite alternate;
     }
     .fever-text {
       font-size: 42px; font-weight: 900;
       background: linear-gradient(to right, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #8b00ff);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      animation: rainbow 0.1s infinite linear, zoom 0.3s ease-out;
+      animation: rainbow 0.1s infinite linear;
     }
     @keyframes blink { 0% { opacity: 0.2; } 100% { opacity: 1; } }
     @keyframes rainbow { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
-    @keyframes zoom { 0% { transform: scale(0); } 100% { transform: scale(1.1); } }
   </style>
 </head>
 <body>
@@ -118,11 +121,11 @@
 <!-- 🎰 本格パチンコ実機液晶演出 -->
 <div id="pachinkoLCD" class="hidden">
   <div class="pachinko-frame">
-    <div id="pachinkoStatus" class="reach-text" style="opacity: 0;">REACH</div>
+    <div id="pachinkoStatus" class="status-text">変動中...</div>
     <div class="reel-container">
-      <div id="reel1" class="reel">7</div>
-      <div id="reel2" class="reel">7</div>
-      <div id="reel3" class="reel">7</div>
+      <div id="reel1" class="reel">1</div>
+      <div id="reel2" class="reel">2</div>
+      <div id="reel3" class="reel">3</div>
     </div>
     <div id="feverTitle" class="fever-text" style="display: none;">FEVER!!</div>
   </div>
@@ -178,7 +181,6 @@
   let myCharacters = ['duck'];
   let selectedCharacters = ['duck'];
   let totalScore = 0;
-  let lastPachinkoScore = 0;
   let isPlaying = false;
   let isPachinkoActive = false;
 
@@ -239,7 +241,6 @@
       return;
     }
     totalScore -= 1000;
-    lastPachinkoScore = Math.floor(totalScore / 500) * 500;
     document.getElementById('gachaScore').innerText = `所持スコア: ${totalScore.toLocaleString()} PTS`;
 
     const picked = ALL_CHARACTERS[Math.floor(Math.random() * ALL_CHARACTERS.length)];
@@ -252,9 +253,13 @@
     document.getElementById('gachaText').innerText = `[${picked.rarity}] ${picked.name} をゲット！`;
   }
 
-  // 🎰 パチンコ実機風リーチ〜777確定演出のメイン処理
-  function startPachinkoSequence() {
+  // 🎰 リアルパチンコ変動・抽選処理（アツい演出 or ハズレ演出）
+  function tryPachinkoTrigger() {
     if (isPachinkoActive) return;
+
+    // 約1/12の確率でパチンコ演出（リーチ発展）が発生！
+    if (Math.random() > 0.08) return; 
+
     isPachinkoActive = true;
 
     const lcd = document.getElementById('pachinkoLCD');
@@ -265,62 +270,83 @@
     const feverText = document.getElementById('feverTitle');
 
     lcd.classList.remove('hidden');
-    status.style.opacity = '0';
     feverText.style.display = 'none';
+    
+    // 事前予告抽選
+    const isWin = Math.random() < 0.35; // リーチがかかったうち35%で777確変大当り！
+    const isGekiatsu = isWin || Math.random() < 0.2; // 激アツカットイン
+
+    status.className = 'status-text';
+    status.innerText = isGekiatsu ? '🔥 激 熱 予 告 🔥' : '変動中...';
 
     // 1. 全リール高速シャッフル
     let shuffleTimer = setInterval(() => {
-      reel1.innerText = Math.floor(Math.random() * 9) + 1;
-      reel2.innerText = Math.floor(Math.random() * 9) + 1;
-      reel3.innerText = Math.floor(Math.random() * 9) + 1;
-    }, 50);
+      reel1.innerText = Math.floor(Math.random() * 8) + 1;
+      reel2.innerText = Math.floor(Math.random() * 8) + 1;
+      reel3.innerText = Math.floor(Math.random() * 8) + 1;
+      reel1.classList.remove('seven'); reel2.classList.remove('seven'); reel3.classList.remove('seven');
+    }, 40);
 
-    // 2. 左リール「7」停止
+    // 2. 左リール停止
     setTimeout(() => {
       reel1.innerText = '7';
-    }, 1000);
+      reel1.classList.add('seven');
+    }, 800);
 
-    // 3. 右リール「7」停止（リーチ発生！）
+    // 3. 右リール停止（リーチ発生）
     setTimeout(() => {
       reel3.innerText = '7';
-      status.innerText = '🔥 激 熱 履 歴 🔥';
-      status.style.opacity = '1';
-    }, 2000);
+      reel3.classList.add('seven');
+      status.className = 'reach-text';
+      status.innerText = 'REACH';
+    }, 1600);
 
-    // 4. 中リール低速コマ送り（スベリ演出）
+    // 4. 中リールのコマ送り演出（大当りかハズレか）
     setTimeout(() => {
       clearInterval(shuffleTimer);
-      let slowCount = 0;
+      let step = 0;
       let slowTimer = setInterval(() => {
-        reel2.innerText = Math.floor(Math.random() * 9) + 1;
-        slowCount++;
-        if (slowCount > 8) {
+        step++;
+        reel2.innerText = Math.floor(Math.random() * 8) + 1;
+        
+        if (step > 10) {
           clearInterval(slowTimer);
-          // 5. 大当り「777」完全停止！
-          reel2.innerText = '7';
-          feverText.style.display = 'block';
           
-          // 効果音再生
-          try {
-            pachinkoSound.currentTime = 0;
-            pachinkoSound.play().catch(()=>{});
-          } catch(e){}
+          if (isWin) {
+            // 🎉 大当り（777）
+            reel2.innerText = '7';
+            reel2.classList.add('seven');
+            feverText.style.display = 'block';
+            status.innerText = '超 確 変 大 当 り';
 
-          // 6. 確定演出終了後、全画面にレインボーメガ大噴射！
-          setTimeout(() => {
-            lcd.classList.add('hidden');
-            isPachinkoActive = false;
-            
-            spawnFountain(canvas.width / 2, canvas.height * 0.82, true, true);
-            for(let k = 0; k < 15; k++) {
-              const randomCharId = selectedCharacters[Math.floor(Math.random() * selectedCharacters.length)];
-              const charObj = ALL_CHARACTERS.find(c => c.id === randomCharId);
-              if (charObj) charParticles.push(new CharParticle(canvas.width / 2, canvas.height * 0.82, charObj.emoji));
-            }
-          }, 2000);
+            try { pachinkoSound.currentTime = 0; pachinkoSound.play().catch(()=>{}); } catch(e){}
+
+            setTimeout(() => {
+              lcd.classList.add('hidden');
+              isPachinkoActive = false;
+              
+              // 画面いっぱいのメガレインボー連射＆大混雑
+              spawnFountain(canvas.width / 2, canvas.height * 0.82, true, true);
+              for(let k = 0; k < 18; k++) {
+                const randomCharId = selectedCharacters[Math.floor(Math.random() * selectedCharacters.length)];
+                const charObj = ALL_CHARACTERS.find(c => c.id === randomCharId);
+                if (charObj) charParticles.push(new CharParticle(canvas.width / 2, canvas.height * 0.82, charObj.emoji));
+              }
+              totalScore += 2000; // 確変大当りボーナス！
+            }, 2200);
+
+          } else {
+            // ❌ ハズレ（1個ズレなど）
+            reel2.innerText = '6';
+            status.innerText = 'ハズレ...';
+            setTimeout(() => {
+              lcd.classList.add('hidden');
+              isPachinkoActive = false;
+            }, 1000);
+          }
         }
-      }, 250);
-    }, 3000);
+      }, 200);
+    }, 2500);
   }
 
   // --- Canvas 描画 ---
@@ -398,14 +424,6 @@
     }
   }
 
-  function addScore(points) {
-    totalScore += points;
-    if (Math.floor(totalScore / 500) > Math.floor(lastPachinkoScore / 500)) {
-      lastPachinkoScore = totalScore;
-      startPachinkoSequence();
-    }
-  }
-
   function spawnFountain(x, y, isPowerUp = false, isMega = false) {
     const count = isMega ? 100 : (isPowerUp ? 25 : 4);
     for (let i = 0; i < count; i++) {
@@ -423,7 +441,10 @@
       if (waterLevel >= maxWaterLevel) {
         waterLevel = 0;
         spawnFountain(canvas.width / 2, canvas.height * 0.82, false, true);
-        addScore(Math.floor(Math.random() * 400) + 300);
+        totalScore += Math.floor(Math.random() * 400) + 300;
+        
+        // ゲージMAX達成時にパチンコ抽選！
+        tryPachinkoTrigger();
       }
     }
   }
@@ -435,13 +456,13 @@
   window.addEventListener('touchstart', (e) => {
     if (!isPlaying || isPachinkoActive) return;
     spawnFountain(canvas.width / 2, canvas.height * 0.82, true);
-    addScore(10);
+    totalScore += 10;
   }, { passive: true });
 
   window.addEventListener('mousedown', (e) => {
     if (!isPlaying || isPachinkoActive || e.target.tagName === 'BUTTON') return;
     spawnFountain(canvas.width / 2, canvas.height * 0.82, true);
-    addScore(10);
+    totalScore += 10;
   });
 
   function animate() {
