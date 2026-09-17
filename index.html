@@ -69,41 +69,62 @@
     #gameUI { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; pointer-events: none; z-index: 5; }
     .back-btn { position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 6px 12px; border-radius: 12px; pointer-events: auto; font-size: 12px; }
 
+    /* 保留ランプ表示 */
+    .hold-container {
+      display: flex; gap: 6px; margin-top: 8px; justify-content: center;
+    }
+    .hold-lamp {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: #334155; border: 1px solid #94a3b8;
+    }
+    .hold-blue { background: #38bdf8; box-shadow: 0 0 8px #38bdf8; }
+    .hold-green { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .hold-red { background: #ef4444; box-shadow: 0 0 10px #ef4444; }
+    .hold-gold { background: #facc15; box-shadow: 0 0 12px #facc15; }
+
     /* 🎰 パチンコ実機風液晶画面 */
     #pachinkoLCD {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.92);
+      background: rgba(0, 0, 0, 0.94);
       z-index: 30; display: flex; flex-direction: column;
       justify-content: center; align-items: center; pointer-events: none;
     }
     .pachinko-frame {
       border: 8px solid #f59e0b;
-      box-shadow: 0 0 30px #f59e0b, inset 0 0 20px #000;
+      box-shadow: 0 0 35px #f59e0b, inset 0 0 20px #000;
       border-radius: 20px; background: #000;
-      padding: 20px; width: 85%; max-width: 360px;
+      padding: 20px; width: 90%; max-width: 380px;
       text-align: center; position: relative; overflow: hidden;
     }
     .reel-container {
-      display: flex; justify-content: center; gap: 10px; margin: 20px 0;
+      display: flex; justify-content: center; gap: 10px; margin: 15px 0;
     }
     .reel {
       background: linear-gradient(180deg, #1e293b, #0f172a);
       border: 2px solid #cbd5e1; border-radius: 10px;
-      width: 70px; height: 90px; font-size: 55px; font-weight: 900;
+      width: 75px; height: 95px; font-size: 55px; font-weight: 900;
       display: flex; align-items: center; justify-content: center;
       color: #38bdf8; text-shadow: 0 0 10px #0284c7;
     }
     .reel.seven { color: #ff4757; text-shadow: 0 0 15px #ff4757; }
 
     .status-text {
-      font-size: 24px; font-weight: 900; height: 36px;
+      font-size: 22px; font-weight: 900; height: 32px;
       color: #facc15; text-shadow: 0 0 10px #f59e0b;
     }
     .reach-text {
       font-size: 32px; font-weight: 900; color: #ef4444;
-      text-shadow: 0 0 15px #ef4444;
-      animation: blink 0.15s infinite alternate;
+      text-shadow: 0 0 15px #ef4444; animation: blink 0.15s infinite alternate;
     }
+    .fish-swarm {
+      position: absolute; width: 100%; top: 35%; font-size: 36px;
+      white-space: nowrap; animation: moveFish 1.2s linear forwards;
+    }
+    @keyframes moveFish {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+
     .fever-text {
       font-size: 42px; font-weight: 900;
       background: linear-gradient(to right, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #8b00ff);
@@ -122,6 +143,7 @@
 <div id="pachinkoLCD" class="hidden">
   <div class="pachinko-frame">
     <div id="pachinkoStatus" class="status-text">変動中...</div>
+    <div id="fishSwarm" class="fish-swarm" style="display:none;">🐟🐬🐳🐟🐬🐳🐟🐬🐳</div>
     <div class="reel-container">
       <div id="reel1" class="reel">1</div>
       <div id="reel2" class="reel">2</div>
@@ -134,6 +156,14 @@
 <!-- ゲームUI -->
 <div id="gameUI">
   <div style="font-weight: bold; font-size: 18px;" id="gameScore">SCORE: 0</div>
+  <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">大当り確率: 1/319</div>
+  <!-- 保留ランプ -->
+  <div class="hold-container" id="holdLamps">
+    <div class="hold-lamp"></div>
+    <div class="hold-lamp"></div>
+    <div class="hold-lamp"></div>
+    <div class="hold-lamp"></div>
+  </div>
   <div style="width: 100%; background: rgba(255,255,255,0.2); height: 8px; border-radius: 4px; margin-top: 6px;">
     <div id="waterBar" style="width: 0%; background: #38bdf8; height: 100%; border-radius: 4px;"></div>
   </div>
@@ -183,6 +213,9 @@
   let totalScore = 0;
   let isPlaying = false;
   let isPachinkoActive = false;
+
+  // 保留管理
+  let holds = []; // 最大4個（'blue', 'green', 'red', 'gold'）
 
   const pachinkoSound = new Audio('./pachinko.mp3');
 
@@ -253,14 +286,54 @@
     document.getElementById('gachaText').innerText = `[${picked.rarity}] ${picked.name} をゲット！`;
   }
 
-  // 🎰 リアルパチンコ変動・抽選処理（アツい演出 or ハズレ演出）
-  function tryPachinkoTrigger() {
-    if (isPachinkoActive) return;
+  // 保留ランプ描画更新
+  function updateHoldUI() {
+    const lamps = document.querySelectorAll('#holdLamps .hold-lamp');
+    lamps.forEach((lamp, idx) => {
+      lamp.className = 'hold-lamp';
+      if (holds[idx]) {
+        lamp.classList.add(`hold-${holds[idx]}`);
+      }
+    });
+  }
 
-    // 約1/12の確率でパチンコ演出（リーチ発展）が発生！
-    if (Math.random() > 0.08) return; 
+  // 保留を1個追加（1/319の大当り抽選もここで実施）
+  function addHold() {
+    if (holds.length >= 4) return;
+    
+    // 大当り判定：1/319 (約0.00313)
+    const isWin = Math.random() < (1 / 319);
+    
+    // 保留の色を判定（金：激アツ、赤：熱、緑：中、青：ガセ）
+    let color = 'blue';
+    if (isWin) {
+      color = Math.random() < 0.6 ? 'gold' : 'red';
+    } else {
+      const r = Math.random();
+      if (r < 0.05) color = 'red';
+      else if (r < 0.2) color = 'green';
+    }
+
+    holds.push({ isWin, color });
+    updateHoldUI();
+
+    // 演出中でなければ即消化開始
+    if (!isPachinkoActive) {
+      consumeHold();
+    }
+  }
+
+  // 保留の消化＆液晶演出
+  function consumeHold() {
+    if (holds.length === 0 || isPachinkoActive) return;
 
     isPachinkoActive = true;
+    const currentHold = holds.shift();
+    updateHoldUI();
+
+    // リーチになるかどうか（ハズレでも一定確率でガセリーチ）
+    const isReach = currentHold.isWin || Math.random() < 0.15;
+    const isFishSwarm = currentHold.isWin ? Math.random() < 0.7 : Math.random() < 0.08; // 魚群予告
 
     const lcd = document.getElementById('pachinkoLCD');
     const reel1 = document.getElementById('reel1');
@@ -268,18 +341,16 @@
     const reel3 = document.getElementById('reel3');
     const status = document.getElementById('pachinkoStatus');
     const feverText = document.getElementById('feverTitle');
+    const fish = document.getElementById('fishSwarm');
 
     lcd.classList.remove('hidden');
     feverText.style.display = 'none';
-    
-    // 事前予告抽選
-    const isWin = Math.random() < 0.35; // リーチがかかったうち35%で777確変大当り！
-    const isGekiatsu = isWin || Math.random() < 0.2; // 激アツカットイン
+    fish.style.display = 'none';
 
     status.className = 'status-text';
-    status.innerText = isGekiatsu ? '🔥 激 熱 予 告 🔥' : '変動中...';
+    status.innerText = currentHold.color === 'gold' ? '👑 金 保 留 激 熱 👑' : '変動中...';
 
-    // 1. 全リール高速シャッフル
+    // 1. シャッフル
     let shuffleTimer = setInterval(() => {
       reel1.innerText = Math.floor(Math.random() * 8) + 1;
       reel2.innerText = Math.floor(Math.random() * 8) + 1;
@@ -293,60 +364,79 @@
       reel1.classList.add('seven');
     }, 800);
 
-    // 3. 右リール停止（リーチ発生）
+    // 3. 右リール（リーチ判定）
     setTimeout(() => {
-      reel3.innerText = '7';
-      reel3.classList.add('seven');
-      status.className = 'reach-text';
-      status.innerText = 'REACH';
+      if (isReach) {
+        reel3.innerText = '7';
+        reel3.classList.add('seven');
+        status.className = 'reach-text';
+        status.innerText = 'REACH';
+
+        // 魚群演出！
+        if (isFishSwarm) {
+          fish.style.display = 'block';
+        }
+      } else {
+        reel3.innerText = '4';
+        clearInterval(shuffleTimer);
+        setTimeout(() => {
+          lcd.classList.add('hidden');
+          isPachinkoActive = false;
+          consumeHold(); // 次の保留へ
+        }, 500);
+      }
     }, 1600);
 
-    // 4. 中リールのコマ送り演出（大当りかハズレか）
-    setTimeout(() => {
-      clearInterval(shuffleTimer);
-      let step = 0;
-      let slowTimer = setInterval(() => {
-        step++;
-        reel2.innerText = Math.floor(Math.random() * 8) + 1;
-        
-        if (step > 10) {
-          clearInterval(slowTimer);
-          
-          if (isWin) {
-            // 🎉 大当り（777）
-            reel2.innerText = '7';
-            reel2.classList.add('seven');
-            feverText.style.display = 'block';
-            status.innerText = '超 確 変 大 当 り';
+    // 4. リーチ時の場合の中リール決定
+    if (isReach) {
+      setTimeout(() => {
+        clearInterval(shuffleTimer);
+        let step = 0;
+        let slowTimer = setInterval(() => {
+          step++;
+          reel2.innerText = Math.floor(Math.random() * 8) + 1;
 
-            try { pachinkoSound.currentTime = 0; pachinkoSound.play().catch(()=>{}); } catch(e){}
+          if (step > 12) {
+            clearInterval(slowTimer);
 
-            setTimeout(() => {
-              lcd.classList.add('hidden');
-              isPachinkoActive = false;
-              
-              // 画面いっぱいのメガレインボー連射＆大混雑
-              spawnFountain(canvas.width / 2, canvas.height * 0.82, true, true);
-              for(let k = 0; k < 18; k++) {
-                const randomCharId = selectedCharacters[Math.floor(Math.random() * selectedCharacters.length)];
-                const charObj = ALL_CHARACTERS.find(c => c.id === randomCharId);
-                if (charObj) charParticles.push(new CharParticle(canvas.width / 2, canvas.height * 0.82, charObj.emoji));
-              }
-              totalScore += 2000; // 確変大当りボーナス！
-            }, 2200);
+            if (currentHold.isWin) {
+              // 🎉🎉🎉 1/319 達成！！ 🎉🎉🎉
+              reel2.innerText = '7';
+              reel2.classList.add('seven');
+              feverText.style.display = 'block';
+              status.innerText = '超 確 変 大 当 り !!';
 
-          } else {
-            // ❌ ハズレ（1個ズレなど）
-            reel2.innerText = '6';
-            status.innerText = 'ハズレ...';
-            setTimeout(() => {
-              lcd.classList.add('hidden');
-              isPachinkoActive = false;
-            }, 1000);
+              try { pachinkoSound.currentTime = 0; pachinkoSound.play().catch(()=>{}); } catch(e){}
+
+              setTimeout(() => {
+                lcd.classList.add('hidden');
+                isPachinkoActive = false;
+
+                // 爆発的大噴射＆ボーナススコア
+                spawnFountain(canvas.width / 2, canvas.height * 0.82, true, true);
+                for(let k = 0; k < 30; k++) {
+                  const randomCharId = selectedCharacters[Math.floor(Math.random() * selectedCharacters.length)];
+                  const charObj = ALL_CHARACTERS.find(c => c.id === randomCharId);
+                  if (charObj) charParticles.push(new CharParticle(canvas.width / 2, canvas.height * 0.82, charObj.emoji));
+                }
+                totalScore += 10000; // 超特大1万ポイント！
+                consumeHold();
+              }, 3000);
+
+            } else {
+              // ❌ ハズレ
+              reel2.innerText = '6';
+              status.innerText = 'ハズレ';
+              setTimeout(() => {
+                lcd.classList.add('hidden');
+                isPachinkoActive = false;
+                consumeHold();
+              }, 1000);
+            }
           }
-        }
-      }, 200);
-    }, 2500);
+        }, 200);
+      }, 2600);
+    }
   }
 
   // --- Canvas 描画 ---
@@ -425,7 +515,7 @@
   }
 
   function spawnFountain(x, y, isPowerUp = false, isMega = false) {
-    const count = isMega ? 100 : (isPowerUp ? 25 : 4);
+    const count = isMega ? 120 : (isPowerUp ? 25 : 4);
     for (let i = 0; i < count; i++) {
       particles.push(new Particle(x, y, isPowerUp, isMega));
     }
@@ -441,10 +531,10 @@
       if (waterLevel >= maxWaterLevel) {
         waterLevel = 0;
         spawnFountain(canvas.width / 2, canvas.height * 0.82, false, true);
-        totalScore += Math.floor(Math.random() * 400) + 300;
+        totalScore += Math.floor(Math.random() * 200) + 100;
         
-        // ゲージMAX達成時にパチンコ抽選！
-        tryPachinkoTrigger();
+        // ゲージ満タンでチャッカー入賞（保留追加）
+        addHold();
       }
     }
   }
